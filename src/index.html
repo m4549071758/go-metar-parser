@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>METAR解析ツール</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="./js/main.js" defer></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <div class="container mx-auto px-4 py-8 max-w-3xl">
+        <!-- ヘッダー -->
+        <header class="mb-12 text-center">
+            <div class="flex justify-center items-center mb-3">
+                <i class="fas fa-cloud-sun text-4xl md:text-5xl text-blue-600 mr-3"></i>
+                <h1 class="text-3xl md:text-4xl font-bold text-gray-800">METAR解析ツール</h1>
+            </div>
+        </header>
+
+        <main class="bg-white rounded-xl shadow-lg p-6 md:p-8">
+            <!-- METAR入力フォーム -->
+            <form id="metar-form" class="space-y-6">
+                <div>
+                    <label for="metar-input" class="block text-sm font-medium text-gray-700 mb-1">METARコード</label>
+                    <div class="relative">
+                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <i class="fas fa-cloud text-gray-400"></i>
+                        </div>
+                        <textarea id="metar-input" name="metar" rows="4" 
+                            class="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            placeholder="例: RJTT 250000Z 36010G18KT 9999 FEW020 SCT100 12/M01 Q1015" required></textarea>
+                    </div>
+                    <p class="mt-1 text-sm text-gray-500">METARコードを入力してください。</p>
+                </div>
+    
+                <div>
+                    <button type="submit" 
+                        class="w-full bg-blue-600 hover:bg-blue-700 focus:ring-4 focus:ring-blue-300 text-white font-medium rounded-lg px-5 py-3 text-center flex items-center justify-center transition-colors">
+                        <i class="fas fa-search mr-2"></i>
+                        METAR解析
+                    </button>
+                </div>
+            </form>
+
+            <!-- 結果表示 -->
+            <div id="output" class="mt-6 text-lg font-medium text-gray-700">
+                <!-- 解析結果がここに表示されます -->
+            </div>
+        </main>
+
+        <footer class="mt-12 text-center text-gray-500 text-sm">
+            <p>© 2025 METAR解析ツール</p>
+        </footer>
+    </div>
+</body>
+</html>
