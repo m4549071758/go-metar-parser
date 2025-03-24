@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"regexp"
@@ -13,70 +14,123 @@ type MetarRequest struct {
 	Raw string `json:"raw"`
 }
 
+// 構造化されたレスポンスの定義
 type MetarResponse struct {
-	Readable string `json:"readable"`
+	Airport       string      `json:"airport"`
+	Time          string      `json:"time"`
+	WindDirection string      `json:"windDirection"`
+	WindSpeed     string      `json:"windSpeed"`
+	Visibility    string      `json:"visibility"`
+	Clouds        []CloudInfo `json:"clouds"`
+	Temperature   string      `json:"temperature"`
+	DewPoint      string      `json:"dewPoint"`
+	Pressure      string      `json:"pressure"`
+	TempoInfo     string      `json:"tempoInfo"`
+	Remarks       string      `json:"remarks"`
 }
 
-func parseMetar(metar string) string {
-	r := regexp.MustCompile(`(?i)^(?P<airport>[A-Z]{4})\s*(?P<time>\d{6}Z)\s*(?P<winddir>\d{3})(?P<windspeed>\d{2})(?:G(?P<gusts>\d{2}))?KT\s*(?P<visibility>\d{4})\s*(?P<clouds>.*)\s*(?P<temperature>\d{2})/(?P<dewpoint>\d{2})\s*(?P<pressure>\d{4})(?P<tempo>.*)?$`)
-	matches := r.FindStringSubmatch(metar)
+type CloudInfo struct {
+	Type   string `json:"type"`
+	Height string `json:"height"`
+}
 
-	if matches == nil {
-		return "METAR解析に失敗しました"
+func parseMetar(metar string) (MetarResponse, error) {
+	response := MetarResponse{
+		Clouds: []CloudInfo{},
 	}
 
-	airport := matches[1]
-	time := matches[2]
-	winddir := matches[3]
-	windspeed := matches[4]
-	gusts := matches[5]
-	visibility := matches[6]
-	clouds := matches[7]
-	temperature := matches[8]
-	dewpoint := matches[9]
-	pressure := matches[10]
-	tempo := matches[11]
+	basicInfo := regexp.MustCompile(`([A-Z]{4})\s+(\d{2})(\d{2})(\d{2})Z`)
+	basicMatches := basicInfo.FindStringSubmatch(metar)
 
-	cloudInfo := "雲なし"
-	if clouds != "" {
-		cloudInfo = clouds
+	if basicMatches == nil {
+		return response, fmt.Errorf("METAR解析に失敗しました：基本情報の取得ができません")
 	}
 
-	windGustInfo := ""
-	if gusts != "" {
-		windGustInfo = "突風: " + gusts + "KT"
+	response.Airport = basicMatches[1]
+
+	hour := basicMatches[3]
+	minute := basicMatches[4]
+	response.Time = hour + ":" + minute
+
+	windInfo := regexp.MustCompile(`(\d{3})(\d{2})KT`)
+	windMatches := windInfo.FindStringSubmatch(metar)
+
+	if windMatches != nil {
+		response.WindDirection = windMatches[1]
+		response.WindSpeed = windMatches[2]
 	}
 
-	if strings.HasPrefix(temperature, "M") {
-		temperature = temperature[1:] + "℃"
-	} else {
-		temperature += "℃"
+	// 視程を抽出
+	visibilityInfo := regexp.MustCompile(`KT\s+(9999|\d{4})`)
+	visibilityMatches := visibilityInfo.FindStringSubmatch(metar)
+
+	if visibilityMatches != nil {
+		if visibilityMatches[1] == "9999" {
+			response.Visibility = "10km以上"
+		} else {
+			response.Visibility = visibilityMatches[1] + "メートル"
+		}
 	}
 
-	if strings.HasPrefix(dewpoint, "M") {
-		dewpoint = dewpoint[1:] + "℃"
-	} else {
-		dewpoint += "℃"
+	// 雲情報を抽出
+	cloudInfo := regexp.MustCompile(`(FEW|SCT|BKN|OVC)(\d{3}|///)`)
+	cloudMatches := cloudInfo.FindAllStringSubmatch(metar, -1)
+
+	for _, cloud := range cloudMatches {
+		cloudType := cloud[1]
+		cloudHeight := cloud[2]
+
+		heightDesc := cloudHeight
+		if cloudHeight == "///" {
+			heightDesc = "不明"
+		} else {
+			heightDesc += "フィート"
+		}
+
+		response.Clouds = append(response.Clouds, CloudInfo{
+			Type:   cloudType,
+			Height: heightDesc,
+		})
 	}
 
-	tempoInfo := ""
-	if tempo != "" {
-		tempoInfo = "一時的な天候: " + tempo
+	// 気温と露点を抽出
+	tempInfo := regexp.MustCompile(`\s+(M?\d{1,2})/(M?\d{1,2})\s+`)
+	tempMatches := tempInfo.FindStringSubmatch(metar)
+
+	if tempMatches != nil {
+		temperature := tempMatches[1]
+		dewpoint := tempMatches[2]
+
+		if strings.HasPrefix(temperature, "M") {
+			temperature = "-" + temperature[1:]
+		}
+		if strings.HasPrefix(dewpoint, "M") {
+			dewpoint = "-" + dewpoint[1:]
+		}
+
+		response.Temperature = temperature + "℃"
+		response.DewPoint = dewpoint + "℃"
 	}
 
-	return strings.Join([]string{
-		"空港コード: " + airport,
-		"観測時刻(UTC): " + time,
-		"風向: " + winddir + "度",
-		"風速: " + windspeed + "KT",
-		windGustInfo,
-		"視程: " + visibility + "メートル",
-		"雲情報: " + cloudInfo,
-		"気温: " + temperature,
-		"露点温度: " + dewpoint,
-		"気圧: " + pressure + "hPa",
-		tempoInfo,
-	}, "\n")
+	// 気圧を抽出
+	pressureInfo := regexp.MustCompile(`\s+(Q\d{4})`)
+	pressureMatches := pressureInfo.FindStringSubmatch(metar)
+
+	if pressureMatches != nil {
+		response.Pressure = pressureMatches[1]
+	}
+
+	// 一時的な天候情報を抽出
+	if tempoParts := regexp.MustCompile(`TEMPO\s+(.+?)(?:\s+RMK|\s*$)`).FindStringSubmatch(metar); tempoParts != nil {
+		response.TempoInfo = tempoParts[1]
+	}
+
+	// 備考情報を抽出
+	if rmkParts := regexp.MustCompile(`RMK\s+(.+?)(?:\s*$)`).FindStringSubmatch(metar); rmkParts != nil {
+		response.Remarks = rmkParts[1]
+	}
+
+	return response, nil
 }
 
 func metarHandler(ctx *gin.Context) {
@@ -85,9 +139,15 @@ func metarHandler(ctx *gin.Context) {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+
 	log.Println(request.Raw)
-	result := parseMetar(request.Raw)
-	ctx.JSON(http.StatusOK, MetarResponse{Readable: result})
+	result, err := parseMetar(request.Raw)
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, result)
 }
 
 func main() {
